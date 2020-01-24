@@ -289,7 +289,7 @@ typedef struct {
 	operand a2;
 	operand a3;
 	char* psrc = NULL;
-	int orig_line=0;
+	int orig_line=-1;
 	bool breakpoint = false;
 } instr;
 
@@ -319,11 +319,11 @@ typedef struct {
 	int loc = -1;
 } label_loc;
 
-uint32_t label_addr(char* label , label_loc* labels, int label_count) {
+uint32_t label_addr(char* label , label_loc* labels, int label_count, int orig_line) {
 	for ( int i = 0; i < label_count; i++ ) {
 		if (streq(labels[i].label, label)) return labels[i].loc;
 	}
-	return -1;
+	print_syntax_error(orig_line, "Undefined label" );
 }
 
 
@@ -339,6 +339,7 @@ int parse_data_element(int line, int size, uint8_t* mem, int offset) {
 		}
 		memcpy(&mem[offset], &v, size);
 		offset += size;
+		strtok(NULL, ",");
 	}
 	return offset;
 }
@@ -710,6 +711,16 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count) {
 							printf( "\n" );
 						}
 					}
+					if ( keybuf[0] == 'l' ) {
+						printf( "Listing compiled isntructions\n" );
+						printf( " srcline : Compiled instruction\n" );
+						for ( int i = 0; i < DATA_OFFSET/4; i++ ) {
+							instr* ii = &imem[i];
+							if ( ii->orig_line >= 0 && ii->psrc ) {
+								printf( "%9d: %s\n", ii->orig_line, ii->psrc );
+							}
+						}
+					}
 				}
 			}
 		}
@@ -823,11 +834,11 @@ void normalize_labels(instr* imem, label_loc* labels, int label_count, source* s
 
 		if ( ii->a1.type == OPTYPE_LABEL ) {
 			ii->a1.type = OPTYPE_IMM;
-			ii->a1.imm = label_addr(ii->a1.label, labels, label_count);
+			ii->a1.imm = label_addr(ii->a1.label, labels, label_count, ii->orig_line);
 		}
 		if ( ii->a2.type == OPTYPE_LABEL ) {
 			ii->a2.type = OPTYPE_IMM;
-			ii->a2.imm = label_addr(ii->a2.label, labels, label_count);
+			ii->a2.imm = label_addr(ii->a2.label, labels, label_count, ii->orig_line);
 			switch (ii->op) {
 				case LUI: {
 					ii->a2.imm = (ii->a2.imm>>12); 
@@ -852,7 +863,7 @@ void normalize_labels(instr* imem, label_loc* labels, int label_count, source* s
 		}
 		if ( ii->a3.type == OPTYPE_LABEL ) {
 			ii->a3.type = OPTYPE_IMM;
-			ii->a3.imm = label_addr(ii->a3.label, labels, label_count);
+			ii->a3.imm = label_addr(ii->a3.label, labels, label_count, ii->orig_line);
 			switch(ii->op) {
 				case ADDI: {
 					ii->a3.imm = ii->a3.imm&((1<<12)-1);
