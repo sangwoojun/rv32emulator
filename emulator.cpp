@@ -339,7 +339,7 @@ int parse_data_element(int line, int size, uint8_t* mem, int offset) {
 		}
 		memcpy(&mem[offset], &v, size);
 		offset += size;
-		strtok(NULL, ",");
+		//strtok(NULL, ",");
 	}
 	return offset;
 }
