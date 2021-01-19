@@ -5,6 +5,8 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include "linenoise.hpp"
+
 // 64 KB
 #define MEM_BYTES 0x10000
 #define TEXT_OFFSET 0
@@ -231,6 +233,8 @@ void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 		}
 	} else if ( addr == MEM_BYTES ) {
 		printf( "[System output]: 0x%x\n", data );
+	} else {
+		printf( "0x%x -- 0x%x\n", addr, data);
 	}
 }
 uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
@@ -615,7 +619,7 @@ void parse(FILE* fin, uint8_t* mem, instr* imem, int& memoff, label_loc* labels,
 	}
 }
 
-void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count) {
+void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count, bool start_immediate) {
 	uint32_t rf[32];
 	uint32_t rf_mirror[32];
 	uint32_t pc = 0;
@@ -625,9 +629,11 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count) {
 		rf_mirror[i] = 0;
 	}
 
-	bool stepping = true;
+	bool stepping = !start_immediate;
 	int stepcnt = 0;
 	char keybuf[128];
+	char* kbp = keybuf;
+
 
 	bool dexit = false;
 	while(!dexit) {
@@ -646,8 +652,17 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count) {
 				if ( i.psrc ) printf( "Next: %s\n", i.psrc );
 				while (true) {
 					printf( "[inst: %6d pc: %6d, src line %4d] > ", inst_cnt, pc, i.orig_line );
-					fgets(keybuf, 128, stdin);
+
+					std::string linebuf;
+					linenoise::Readline(">", linebuf);
+					memcpy(keybuf, linebuf.c_str(), 128);
+					linenoise::AddHistory(linebuf.c_str());
+					//while ((kbp = linenoise?::Readline(">>")) == NULL);
+					//fgets(keybuf, 128, stdin);
+
+
 					for ( int i = 0; i < strlen(keybuf); i++ ) if (keybuf[i] == '\n') keybuf[i] = '\0';
+
 					if ( keybuf[0] == 'q' ) {
 						printf( "Quit command input! Exiting...\n" );
 						exit(0);
@@ -904,6 +919,11 @@ main(int argc, char** argv) {
 		exit(2);
 	}
 
+	bool start_immediate = false;
+	if ( argc >= 3 ) {
+		start_immediate = true;
+	}
+
 
 	//ProcessorState* ps = new ProcessorState();
 	
@@ -931,7 +951,7 @@ main(int argc, char** argv) {
 	parse(fin, mem, imem, memoff, labels, label_count, &src);
 	normalize_labels(imem, labels, label_count, &src);
 	
-	execute(mem, imem, labels, label_count);
+	execute(mem, imem, labels, label_count, start_immediate);
 
 	printf( "Execution done!\n" );
 	exit(0);
