@@ -651,10 +651,11 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count, bool
 				printf( "\n" );
 				if ( i.psrc ) printf( "Next: %s\n", i.psrc );
 				while (true) {
-					printf( "[inst: %6d pc: %6d, src line %4d] > ", inst_cnt, pc, i.orig_line );
+					printf( "[inst: %6d pc: %6d, src line %4d]\n", inst_cnt, pc, i.orig_line );
 
 					std::string linebuf;
-					linenoise::Readline(">", linebuf);
+					fflush(stdout);
+					linenoise::Readline(">>", linebuf);
 					memcpy(keybuf, linebuf.c_str(), 128);
 					linenoise::AddHistory(linebuf.c_str());
 					//while ((kbp = linenoise?::Readline(">>")) == NULL);
