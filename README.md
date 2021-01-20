@@ -6,6 +6,11 @@ Build using `make`
 
 Run using `./obj/emulator [assembly file path]`
 
+## Assembly Syntax
+
+Terms should be separated by whitespace! e.g., "add s0 s1 s2"
+Commas and other delimiters are not support at the moment.
+
 ## Debugging commands
 
 Execution will result in a command prompt, preceded by some information about the instruction to execute next.
@@ -13,7 +18,8 @@ For example:
 
 ```
 Next: lui x02, 0x00000010
-[inst:      1 pc:      0, src line    3] > 
+[inst:      1 pc:      0, src line    3] 
+>> 
 ```
 
 The following are the supported commands:
