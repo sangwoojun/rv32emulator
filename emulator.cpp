@@ -336,11 +336,13 @@ uint32_t label_addr(char* label , label_loc* labels, int label_count, int orig_l
 int parse_data_element(int line, int size, uint8_t* mem, int offset) {
 	while (char* t = strtok(NULL, " \t\r\n") ) {
 		errno = 0;
-		long int v = strtol(t, NULL, 0);
-		if ( errno == ERANGE || (v>>(size*8)) ) {
+		int64_t v = strtol(t, NULL, 0);
+		int64_t vs = (v>>(size*8));
+		if ( errno == ERANGE || (vs > 0 && vs != -1 ) ) {
 			printf( "Value out of bounds at line %d : %s\n", line, t);
 			exit(2);
 		}
+		//printf ( "parse_data_element %d: %d %ld %d %d\n", line, size, v, errno, sizeof(long int));
 		memcpy(&mem[offset], &v, size);
 		offset += size;
 		//strtok(NULL, ",");
