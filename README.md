@@ -30,6 +30,8 @@ The following are the supported commands:
 * m : Reads memory values. Memory address prefixed with m (e.g., `m0x1000` or `m1024`) will print four bytes starting from that address. If you want to read more values, give the number of bytes as a parameger. e.g., `m0x1000 16`.
 * b : Set breakpoint. e.g., `b17` to set a breakpoint at source code line 17. The list of existing breakpoints can be seen with a simple `b` with no suffixes. Breakpoints can be removed with an uppercase `B`. e.g., `B16`.
 * l : `l` with no arguments will print the compiled hardware instructions (after translating pseudo-instructions), each with its line number from the original source file.
+* q : `q` with no arguments will exit the emulator
+
 
 ## Caveats
 
