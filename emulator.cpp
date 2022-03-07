@@ -5,6 +5,8 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include "cachesim.h"
+
 #include "linenoise.hpp"
 
 // 64 KB
@@ -223,6 +225,15 @@ void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 		case SW: bytes = 4; break;
 	}
 	if ( addr < MEM_BYTES && addr + bytes <= MEM_BYTES ) {
+		if ( cache_peek(addr, bytes) < 0 ) {
+			cache_flush(addr, mem);
+			uint32_t waddr = addr-(addr&((1<<(2+CACHE_LINE_WORD_SZ))-1));
+			for ( int i = 0; i < CACHE_LINE_WORD; i++ ) {
+				cache_update(waddr+(i*4), *(uint32_t*)&(mem[waddr+(i*4)]));
+			}
+		}
+		cache_write(addr,data,bytes);
+		/*
 		switch (op ) {
 			case SB: mem[addr] = *(uint8_t*)&(data); break;
 			case SH: *(uint16_t*)&(mem[addr]) = *(uint16_t*)&(data); break;
@@ -231,6 +242,7 @@ void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 				//printf( "Writing %x to addr %x\n", rf[i.a1.reg], rf[i.a2.reg]+i.a3.imm );
 			break;
 		}
+		*/
 	} else if ( addr == MEM_BYTES ) {
 		printf( "[System output]: 0x%x\n", data );
 	} else {
@@ -238,7 +250,7 @@ void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 	}
 }
 uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
-	uint32_t ret = 0;;
+	uint32_t ret = 0;
 	int bytes = 0;
 
 	switch(op) {
@@ -249,6 +261,22 @@ uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
 		case LW:  bytes = 4; break;
 	}
 	if ( addr + bytes <= MEM_BYTES ) {
+		if ( cache_peek(addr, bytes) < 0 ) {
+			cache_flush(addr, mem);
+			uint32_t waddr = addr-(addr&((1<<(2+CACHE_LINE_WORD_SZ))-1));
+			for ( int i = 0; i < CACHE_LINE_WORD; i++ ) {
+				cache_update(waddr+(i*4), *(uint32_t*)&(mem[waddr+(i*4)]));
+			}
+		}
+		uint32_t cr = cache_read(addr,bytes);
+		switch(op) {
+			case LB: ret = signextend(cr, 8); break;
+			case LBU: ret = (cr&0xff); break;
+			case LH: ret = signextend(cr,16); break;
+			case LHU: ret = (cr&0xffff); break;
+			case LW: ret = cr; break;
+		}
+		/*
 		switch(op) {
 			case LB: ret = signextend(mem[addr], 8); break;
 			case LBU: ret = mem[addr]; break;
@@ -268,6 +296,7 @@ uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
 				//printf( "Reading %x from addr %x\n", rf[i.a1.reg], rf[i.a2.reg]+i.a3.imm );
 			break;
 		}
+		*/
 	}
 	//printf( "Reading %x from %d\n", ret, addr );
 

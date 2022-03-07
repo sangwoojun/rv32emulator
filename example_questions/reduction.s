@@ -39,6 +39,8 @@ submit:
 ####### Modify this part! #############>>
 
 solve:
+	li t0 0xdeadbeef
+	sw t0 0(sp)
 	#addi a0 zero 1
 	#jal submit
 	ret
