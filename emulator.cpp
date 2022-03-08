@@ -898,8 +898,8 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count, bool
 				printf( "Reached Halt and Catch Fire instruction!\n" );
 				printf( "inst: %6d pc: %6d src line: %d\n", inst_cnt, pc, i.orig_line );
 				print_regfile(rf);
-				printf( "Read %d/%d Write %d/%d\n", cache_read_hits, mem_read_reqs, cache_write_hits, mem_write_reqs );
-				printf( "Flush %d\n", mem_flush_words);
+				printf( "Cache read %d/%d Cache write %d/%d\n", cache_read_hits, mem_read_reqs, cache_write_hits, mem_write_reqs );
+				printf( "Cache flush words: %d\n", mem_flush_words);
 				dexit = true;
 				break;
 			case UNIMPL:

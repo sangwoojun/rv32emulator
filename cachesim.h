@@ -4,7 +4,7 @@
 #ifndef CACHESIM_H__
 #define CACHESIM_H__
 
-#define CACHE_SETS_SZ 6
+#define CACHE_SETS_SZ 8
 #define CACHE_SETS (1<<CACHE_SETS_SZ)
 #define CACHE_WAYS_SZ 0
 #define CACHE_WAYS (1<<CACHE_WAYS_SZ)

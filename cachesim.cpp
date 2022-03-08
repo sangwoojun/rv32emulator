@@ -1,4 +1,5 @@
 #include "cachesim.h"
+#include <stdlib.h>
 
 uint32_t g_cache[CACHE_SETS][CACHE_WAYS][CACHE_LINE_WORD] = {0};
 uint32_t g_tags[CACHE_SETS][CACHE_WAYS] = {0};
@@ -39,7 +40,7 @@ int cache_peek(uint32_t addr, int bytes) {
 	}
 
 	for ( int i = 0; i < CACHE_WAYS; i++ ) {
-			if ( g_tags[idx][i] == tag && is_flag_valid(g_flags[idx][i]) ) return i;
+		if ( g_tags[idx][i] == tag && is_flag_valid(g_flags[idx][i]) ) return i;
 	}
 
 	return -1;
@@ -99,6 +100,7 @@ uint32_t cache_read(uint32_t addr, int bytes) {
 			break;
 		}
 	}
+
 	return ret;
 }
 
@@ -126,6 +128,7 @@ void cache_flush(uint32_t addr, uint8_t* mem) {
 	//uint32_t wid = cache_calc_word_idx(addr);
 
 	//choose way
+	//int way = rand()%CACHE_WAYS;
 	int way = 0;
 
 	if (!is_flag_valid(g_flags[idx][way])) return;
