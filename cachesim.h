@@ -4,6 +4,8 @@
 #ifndef CACHESIM_H__
 #define CACHESIM_H__
 
+// Change these to configure the cache.
+// Values are logarithmic, so CACHE_WAYS_SZ of 0 results in 1 way!
 #define CACHE_SETS_SZ 8
 #define CACHE_WAYS_SZ 0
 #define CACHE_LINE_WORD_SZ 0
