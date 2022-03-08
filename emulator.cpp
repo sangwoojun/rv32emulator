@@ -12,7 +12,7 @@
 // 64 KB
 #define MEM_BYTES 0x10000
 #define TEXT_OFFSET 0
-#define DATA_OFFSET 8192
+#define DATA_OFFSET 32768
 
 #define MAX_LABEL_COUNT 128
 #define MAX_LABEL_LEN 32
@@ -215,6 +215,7 @@ void parse_mem(char* tok, int* reg, uint32_t* imm, int bits, int line) {
 	*reg = parse_reg(regs, line);
 }
 
+uint32_t mem_flush_words = 0;
 uint32_t mem_write_reqs = 0;
 uint32_t cache_write_hits = 0;
 uint32_t mem_read_reqs = 0;
@@ -238,6 +239,7 @@ void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 			for ( int i = 0; i < CACHE_LINE_WORD; i++ ) {
 				cache_update(waddr+(i*4), *(uint32_t*)&(mem[waddr+(i*4)]));
 			}
+			mem_flush_words += CACHE_LINE_WORD;
 		} else {
 			cache_write_hits ++;
 		}
@@ -264,6 +266,7 @@ uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
 		int way = cache_peek(addr,bytes);
 		if ( way < 0 ) {
 			cache_flush(addr, mem);
+			mem_flush_words += CACHE_LINE_WORD;
 			uint32_t waddr = addr-(addr&((1<<(2+CACHE_LINE_WORD_SZ))-1));
 			for ( int i = 0; i < CACHE_LINE_WORD; i++ ) {
 				cache_update(waddr+(i*4), *(uint32_t*)&(mem[waddr+(i*4)]));
@@ -361,6 +364,13 @@ int parse_data_element(int line, int size, uint8_t* mem, int offset) {
 	}
 	return offset;
 }
+int parse_data_zero(int line, uint8_t* mem, int offset) {
+	char* t = strtok(NULL, " \t\r\n");
+	int bytes = atoi(t);
+	memset(&mem[offset], 0, bytes);
+
+	return offset + bytes;
+}
 int parse_assembler_directive(int line, char* ftok, uint8_t* mem, int memoff) {
 	//printf( "assembler directive %s\n", ftok );
 	if ( 0 == memcmp(ftok, ".text", strlen(ftok) ) ) {
@@ -377,6 +387,7 @@ int parse_assembler_directive(int line, char* ftok, uint8_t* mem, int memoff) {
 	} else if ( 0 == memcmp(ftok, ".byte", strlen(ftok)) ) memoff = parse_data_element(line, 1, mem, memoff);
 	else if ( 0 == memcmp(ftok, ".half", strlen(ftok)) ) memoff = parse_data_element(line, 2, mem, memoff);
 	else if ( 0 == memcmp(ftok, ".word", strlen(ftok)) ) memoff = parse_data_element(line, 4, mem, memoff);
+	else if ( 0 == memcmp(ftok, ".zero", strlen(ftok)) ) memoff = parse_data_zero(line, mem, memoff);
 	else {
 		printf( "Undefined assembler directive at line %d: %s\n", line, ftok );
 		//exit(3);
@@ -423,7 +434,7 @@ int parse_pseudoinstructions(int line, char* ftok, instr* imem, int ioff, label_
 		//printf( ">> %d %x %d\n", reg, i2->a3.imm, i2->a3.imm );
 		return 2;
 	}
-	if ( streq(ftok, "la") ) {
+	if ( streq(ftok, "la") || streq(ftok, "lla") ) {
 		if ( !o1 || !o2 || o3 ) print_syntax_error(line, "Invalid format");
 
 		int reg = parse_reg(o1, line);
@@ -442,6 +453,18 @@ int parse_pseudoinstructions(int line, char* ftok, instr* imem, int ioff, label_
 		i2->orig_line = line;
 		//append_source(ftok, o1, o2, o3, src, i2); // done in normalize
 		return 2;
+	}
+	if ( streq(ftok, "nop" )) {
+		if ( o1 ) print_syntax_error(line, "Invalid format");
+
+		instr* i = &imem[ioff];
+		i->op = ADDI;
+		i->a1.type = OPTYPE_REG; i->a1.reg = 0;
+		i->a2.type = OPTYPE_REG; i->a2.reg = 0;
+		i->a3.type = OPTYPE_IMM; i->a3.imm = 0;
+		i->orig_line = line;
+		append_source("nop", "zero", "zero", "0", src, i);
+		return 1;
 	}
 	if ( streq(ftok, "ret" )) {
 		if ( o1 ) print_syntax_error(line, "Invalid format");
@@ -549,7 +572,7 @@ int parse_pseudoinstructions(int line, char* ftok, instr* imem, int ioff, label_
 
 int parse_instr(int line, char* ftok, instr* imem, int memoff, label_loc* labels, source* src) {
 	if ( memoff +4 > DATA_OFFSET ) {
-		printf( "Instructions in data segment!\n" );
+		printf( "Instructions in data segment! Line %d\n", line );
 		exit(1);
 	}
 	char* o1 = strtok(NULL, " \t\r\n,");
@@ -641,9 +664,8 @@ void parse(FILE* fin, uint8_t* mem, instr* imem, int& memoff, label_loc* labels,
 		if ( !ftok ) continue;
 
 		if ( ftok[0] == '#' ) continue;
-		if ( ftok[0] == '.' ) {
-			memoff = parse_assembler_directive(line, ftok, mem, memoff);
-		} else if ( ftok[strlen(ftok)-1] == ':' ) {
+
+		if ( ftok[strlen(ftok)-1] == ':' ) {
 			ftok[strlen(ftok)-1] = 0;
 			if ( strlen(ftok) >= MAX_LABEL_LEN ) {
 				printf( "Exceeded maximum length of label: %s\n", ftok );
@@ -669,8 +691,9 @@ void parse(FILE* fin, uint8_t* mem, instr* imem, int& memoff, label_loc* labels,
 					memoff += count*4;
 				}
 			}
-		}
-		else {
+		} else if ( ftok[0] == '.' ) {
+			memoff = parse_assembler_directive(line, ftok, mem, memoff);
+		} else {
 			int count = parse_instr(line, ftok, imem, memoff, labels, src);
 			for ( int i = 0; i < count; i++ ) *(uint32_t*)&mem[memoff+(i*4)] = 0xcccccccc;
 			memoff += count*4;
@@ -876,6 +899,7 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count, bool
 				printf( "inst: %6d pc: %6d src line: %d\n", inst_cnt, pc, i.orig_line );
 				print_regfile(rf);
 				printf( "Read %d/%d Write %d/%d\n", cache_read_hits, mem_read_reqs, cache_write_hits, mem_write_reqs );
+				printf( "Flush %d\n", mem_flush_words);
 				dexit = true;
 				break;
 			case UNIMPL:
