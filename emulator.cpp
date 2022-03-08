@@ -215,6 +215,11 @@ void parse_mem(char* tok, int* reg, uint32_t* imm, int bits, int line) {
 	*reg = parse_reg(regs, line);
 }
 
+uint32_t mem_write_reqs = 0;
+uint32_t cache_write_hits = 0;
+uint32_t mem_read_reqs = 0;
+uint32_t cache_read_hits = 0;
+
 
 void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 	//printf( "Storing %x to %d\n", data, addr );
@@ -225,24 +230,18 @@ void mem_write(uint8_t* mem, uint32_t addr, uint32_t data, instr_type op) {
 		case SW: bytes = 4; break;
 	}
 	if ( addr < MEM_BYTES && addr + bytes <= MEM_BYTES ) {
-		if ( cache_peek(addr, bytes) < 0 ) {
+		mem_write_reqs ++;
+		int way = cache_peek(addr,bytes);
+		if ( way < 0 ) {
 			cache_flush(addr, mem);
 			uint32_t waddr = addr-(addr&((1<<(2+CACHE_LINE_WORD_SZ))-1));
 			for ( int i = 0; i < CACHE_LINE_WORD; i++ ) {
 				cache_update(waddr+(i*4), *(uint32_t*)&(mem[waddr+(i*4)]));
 			}
+		} else {
+			cache_write_hits ++;
 		}
 		cache_write(addr,data,bytes);
-		/*
-		switch (op ) {
-			case SB: mem[addr] = *(uint8_t*)&(data); break;
-			case SH: *(uint16_t*)&(mem[addr]) = *(uint16_t*)&(data); break;
-			case SW: 
-				*(uint32_t*)&(mem[addr]) = data;
-				//printf( "Writing %x to addr %x\n", rf[i.a1.reg], rf[i.a2.reg]+i.a3.imm );
-			break;
-		}
-		*/
 	} else if ( addr == MEM_BYTES ) {
 		printf( "[System output]: 0x%x\n", data );
 	} else {
@@ -261,12 +260,17 @@ uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
 		case LW:  bytes = 4; break;
 	}
 	if ( addr + bytes <= MEM_BYTES ) {
-		if ( cache_peek(addr, bytes) < 0 ) {
+		mem_read_reqs ++;
+		int way = cache_peek(addr,bytes);
+		if ( way < 0 ) {
 			cache_flush(addr, mem);
 			uint32_t waddr = addr-(addr&((1<<(2+CACHE_LINE_WORD_SZ))-1));
 			for ( int i = 0; i < CACHE_LINE_WORD; i++ ) {
 				cache_update(waddr+(i*4), *(uint32_t*)&(mem[waddr+(i*4)]));
 			}
+		} else {
+			cache_read_hits++;
+			//printf( "%x %d--\n", addr,way);
 		}
 		uint32_t cr = cache_read(addr,bytes);
 		switch(op) {
@@ -276,27 +280,6 @@ uint32_t mem_read(uint8_t* mem, uint32_t addr, instr_type op) {
 			case LHU: ret = (cr&0xffff); break;
 			case LW: ret = cr; break;
 		}
-		/*
-		switch(op) {
-			case LB: ret = signextend(mem[addr], 8); break;
-			case LBU: ret = mem[addr]; break;
-			case LH: {
-				int16_t rv = *(int16_t*)&(mem[addr]); 
-				int32_t rvv = (int32_t)rv;
-				ret = *(uint32_t*)&rvv;
-				break;
-				}
-			case LHU: {
-				uint16_t rv = *(int16_t*)&(mem[addr]); 
-				ret = (uint32_t)rv;
-				break;
-				}
-			case LW: 
-				ret = *(uint32_t*)&(mem[addr]); 
-				//printf( "Reading %x from addr %x\n", rf[i.a1.reg], rf[i.a2.reg]+i.a3.imm );
-			break;
-		}
-		*/
 	}
 	//printf( "Reading %x from %d\n", ret, addr );
 
@@ -396,7 +379,7 @@ int parse_assembler_directive(int line, char* ftok, uint8_t* mem, int memoff) {
 	else if ( 0 == memcmp(ftok, ".word", strlen(ftok)) ) memoff = parse_data_element(line, 4, mem, memoff);
 	else {
 		printf( "Undefined assembler directive at line %d: %s\n", line, ftok );
-		exit(3);
+		//exit(3);
 	}
 	return memoff;
 }
@@ -472,6 +455,18 @@ int parse_pseudoinstructions(int line, char* ftok, instr* imem, int ioff, label_
 		append_source("jalr", "x0", "x1", "x0", src, i);
 		return 1;
 	}
+	if ( streq(ftok, "jr" )) {
+		if ( !o1 || o2 ) print_syntax_error(line, "Invalid format");
+
+		instr* i = &imem[ioff];
+		i->op = JALR;
+		i->a1.type = OPTYPE_REG; i->a1.reg = 0;
+		i->a2.type = OPTYPE_REG; i->a2.reg = parse_reg(o1, line);
+		i->a3.type = OPTYPE_IMM; i->a3.imm = 0;
+		i->orig_line = line;
+		append_source("jalr", "x0", o1, "x0", src, i);
+		return 1;
+	}
 	if ( streq(ftok, "j" )) {
 		if ( !o1 || o2 ) print_syntax_error(line, "Invalid format");
 
@@ -481,6 +476,17 @@ int parse_pseudoinstructions(int line, char* ftok, instr* imem, int ioff, label_
 		i->a2.type = OPTYPE_LABEL; strncpy(i->a2.label, o1, MAX_LABEL_LEN);
 		i->orig_line = line;
 		append_source("j", "x0", o1, NULL, src, i);
+		return 1;
+	}
+	if ( streq(ftok, "call" )) {
+		if ( !o1 || o2 ) print_syntax_error(line, "Invalid format");
+
+		instr* i = &imem[ioff];
+		i->op = JAL;
+		i->a1.type = OPTYPE_REG; i->a1.reg = 1;
+		i->a2.type = OPTYPE_LABEL; strncpy(i->a2.label, o1, MAX_LABEL_LEN);
+		i->orig_line = line;
+		append_source("jal", "x1", o1, NULL, src, i);
 		return 1;
 	}
 	if ( streq(ftok, "mv" )) {
@@ -514,6 +520,28 @@ int parse_pseudoinstructions(int line, char* ftok, instr* imem, int ioff, label_
 		i->a3.type = OPTYPE_LABEL; strncpy(i->a3.label, o2, MAX_LABEL_LEN);
 		i->orig_line = line;
 		append_source("beq", "x0", o1, o2, src, i);
+		return 1;
+	}
+	if ( streq(ftok, "bgt" )) {
+		if ( !o1 || !o2 || !o3 || o4 ) print_syntax_error(line, "Invalid format");
+		instr* i = &imem[ioff];
+		i->op = BLT;
+		i->a1.type = OPTYPE_REG; i->a2.reg = parse_reg(o1, line);
+		i->a2.type = OPTYPE_REG; i->a1.reg = parse_reg(o2, line);
+		i->a3.type = OPTYPE_LABEL; strncpy(i->a3.label, o3, MAX_LABEL_LEN);
+		i->orig_line = line;
+		append_source("blt", o2, o1, o3, src, i);
+		return 1;
+	}
+	if ( streq(ftok, "ble" )) {
+		if ( !o1 || !o2 || !o3 || o4 ) print_syntax_error(line, "Invalid format");
+		instr* i = &imem[ioff];
+		i->op = BGE;
+		i->a1.type = OPTYPE_REG; i->a2.reg = parse_reg(o1, line);
+		i->a2.type = OPTYPE_REG; i->a1.reg = parse_reg(o2, line);
+		i->a3.type = OPTYPE_LABEL; strncpy(i->a3.label, o3, MAX_LABEL_LEN);
+		i->orig_line = line;
+		append_source("bge", o2, o1, o3, src, i);
 		return 1;
 	}
 	return 0;
@@ -847,6 +875,7 @@ void execute(uint8_t* mem, instr* imem, label_loc* labels, int label_count, bool
 				printf( "Reached Halt and Catch Fire instruction!\n" );
 				printf( "inst: %6d pc: %6d src line: %d\n", inst_cnt, pc, i.orig_line );
 				print_regfile(rf);
+				printf( "Read %d/%d Write %d/%d\n", cache_read_hits, mem_read_reqs, cache_write_hits, mem_write_reqs );
 				dexit = true;
 				break;
 			case UNIMPL:
